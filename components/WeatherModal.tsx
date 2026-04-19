@@ -34,7 +34,9 @@ function ForecastRow({ day }: { day: DayForecast }) {
       <View style={styles.forecastRainContainer}>
         <Feather name="droplet" size={11} color="#1565C0" />
         <Text style={styles.forecastRain}>
-          {day.precipitation > 0 ? `${day.precipitation}mm` : "—"}
+          {day.rainProbability > 0
+            ? `${Math.round(day.rainProbability * 100)}%`
+            : "—"}
         </Text>
       </View>
       <View
@@ -49,7 +51,7 @@ function ForecastRow({ day }: { day: DayForecast }) {
             { color: day.goodForFarming ? "#2E7D32" : "#C62828" },
           ]}
         >
-          {day.goodForFarming ? "✓ Farm" : "✗ Rest"}
+          {day.goodForFarming ? "✓ Farm" : "⚠ Rain"}
         </Text>
       </View>
     </View>
@@ -171,7 +173,7 @@ export default function WeatherModal({
                   <Text style={[styles.forecastHeaderText, { flex: 0.7 }]}>Day</Text>
                   <Text style={[styles.forecastHeaderText, { flex: 0.5 }]}></Text>
                   <Text style={[styles.forecastHeaderText, { flex: 1 }]}>Temp</Text>
-                  <Text style={[styles.forecastHeaderText, { flex: 0.8 }]}>Rain</Text>
+                  <Text style={[styles.forecastHeaderText, { flex: 0.8 }]}>Rain%</Text>
                   <Text style={[styles.forecastHeaderText, { flex: 1 }]}>Farming</Text>
                 </View>
                 {weather.daily.map((day) => (

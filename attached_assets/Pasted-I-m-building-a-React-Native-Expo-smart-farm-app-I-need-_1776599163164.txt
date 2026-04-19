@@ -1,0 +1,37 @@
+I'm building a React Native (Expo) smart farm app. I need to update the Weather component with the following requirements:
+
+### Current Problem:
+The weather widget shows hardcoded/static "29°C Partly Cloudy" text in the header instead of real-time data.
+
+### What I Need:
+
+1. **Location Permission First**: On app load, request device GPS location using `expo-location`. If denied, show a fallback asking user to enable location.
+
+2. **Real Weather API**: Use OpenWeatherMap API (key: 834fa6f17d5b51e503ed2ebcf6ba1dcb) with the `onecall` or `forecast` endpoint:
+   - Current weather: `https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid=834fa6f17d5b51e503ed2ebcf6ba1dcb&units=metric`
+   - 5-day forecast: `https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid=834fa6f17d5b51e503ed2ebcf6ba1dcb&units=metric&cnt=40`
+
+3. **Header Bar** (always visible): Show `{temp}°C · {description}` and `No rain expected · Good week` or relevant rain warning dynamically based on forecast data.
+
+4. **Weather Forecast Bottom Sheet / Modal** (triggered on tapping header weather pill):
+   UI should match this layout exactly:
+   - Title: "🌤 Weather Forecast"
+   - Subtitle: Location name + coordinates (from reverse geocode or OpenWeather response)
+   - TODAY card: large temp, condition icon, wind speed (km/h), high/low temps, rain status
+   - Green banner: "✓ Good day for farming & irrigation" (or warning if rain expected)
+   - 7-DAY FORECAST table with columns: Day | Icon | Temp (high°/low°) | Rain | Farming status
+   - Farming status = green "✓ Farm" if no rain, else orange "⚠ Rain" 
+   - Use weather condition codes to map to emoji icons (☀️ 🌤 ⛅ 🌧 etc.)
+
+5. **Forecast Logic**:
+   - Parse the 5-day forecast (40 x 3hr slots) and group by day
+   - For each day extract: max temp, min temp, dominant condition, rain probability
+   - If any slot has rain > 30% for that day, mark as rain day
+
+6. **Language**: UI text stays bilingual (Hindi header like "नमस्कार, रमेश 🌱", English in weather modal)
+
+7. **Tech Stack**: React Native + Expo, use `expo-location` for GPS, `fetch` for API calls, state managed with `useState` + `useEffect`. Style with StyleSheet.
+
+8. **Error States**: Handle location denied, API failure, loading state gracefully with appropriate UI feedback.
+
+Please update or create the WeatherWidget component and integrate it into the main dashboard screen. Show the current weather in the green header pill, and the full forecast in a modal/bottom sheet when tapped.
