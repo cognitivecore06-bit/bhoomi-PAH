@@ -36,7 +36,7 @@ export default function HomeScreen() {
   const farmer = FARMER;
   const firstName = farmer.nameMr.split(" ")[0];
 
-  const { weather, loading: weatherLoading, error: weatherError, locationLabel, refetch } = useWeather();
+  const { weather, loading: weatherLoading, error: weatherError, locationLabel } = useWeather();
   const [showWeatherModal, setShowWeatherModal] = useState(false);
 
   const currentCondition = weather?.current.condition;

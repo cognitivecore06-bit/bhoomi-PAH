@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import * as Location from "expo-location";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -39,9 +39,9 @@ export interface WeatherData {
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const DEFAULT_LAT = 19.07;
-const DEFAULT_LNG = 72.87;
-const DEFAULT_LOCATION_LABEL = "Maharashtra, India";
+const FALLBACK_LAT = 19.2183;
+const FALLBACK_LNG = 73.1855;
+const FALLBACK_LOCATION = "Ambernath, Maharashtra";
 
 const OWM_KEY = "834fa6f17d5b51e503ed2ebcf6ba1dcb";
 const OWM_BASE = "https://api.openweathermap.org/data/2.5";
@@ -56,28 +56,35 @@ const DEFAULT_DATA: WeatherData = {
   },
   daily: [],
   rainDayShort: null,
-  locationName: DEFAULT_LOCATION_LABEL,
+  locationName: FALLBACK_LOCATION,
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 export function getCondition(description: string): WeatherCondition {
   const d = description.toLowerCase();
-  if (d.includes("thunder")) return { label: "Thunderstorm", emoji: "⛈️", icon: "zap" };
-  if (d.includes("snow")) return { label: "Snow", emoji: "❄️", icon: "cloud-snow" };
+  if (d.includes("thunder"))
+    return { label: "Thunderstorm", emoji: "⛈️", icon: "zap" };
+  if (d.includes("snow"))
+    return { label: "Snow", emoji: "❄️", icon: "cloud-snow" };
   if (d.includes("heavy rain") || d.includes("heavy shower"))
     return { label: "Heavy Rain", emoji: "🌧️", icon: "cloud-rain" };
   if (d.includes("rain") || d.includes("shower"))
     return { label: "Rain", emoji: "🌦️", icon: "cloud-rain" };
-  if (d.includes("drizzle")) return { label: "Drizzle", emoji: "🌦️", icon: "cloud-rain" };
-  if (d.includes("mist") || d.includes("fog")) return { label: "Foggy", emoji: "🌫️", icon: "wind" };
+  if (d.includes("drizzle"))
+    return { label: "Drizzle", emoji: "🌦️", icon: "cloud-rain" };
+  if (d.includes("mist") || d.includes("fog"))
+    return { label: "Foggy", emoji: "🌫️", icon: "wind" };
   if (d.includes("haze") || d.includes("smoke") || d.includes("dust"))
     return { label: "Haze", emoji: "🌫️", icon: "wind" };
-  if (d.includes("overcast")) return { label: "Overcast", emoji: "☁️", icon: "cloud" };
-  if (d.includes("cloud") || d.includes("broken")) return { label: "Partly Cloudy", emoji: "⛅", icon: "cloud" };
+  if (d.includes("overcast"))
+    return { label: "Overcast", emoji: "☁️", icon: "cloud" };
+  if (d.includes("cloud") || d.includes("broken"))
+    return { label: "Partly Cloudy", emoji: "⛅", icon: "cloud" };
   if (d.includes("few clouds") || d.includes("scattered"))
     return { label: "Partly Cloudy", emoji: "🌤️", icon: "cloud" };
-  if (d.includes("clear")) return { label: "Clear Sky", emoji: "☀️", icon: "sun" };
+  if (d.includes("clear"))
+    return { label: "Clear Sky", emoji: "☀️", icon: "sun" };
   return { label: "Cloudy", emoji: "☁️", icon: "cloud" };
 }
 
@@ -88,57 +95,46 @@ function isGoodForFarming(description: string, rainProbability: number): boolean
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const FULL_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const FULL_DAYS = [
+  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+];
 
 function dayMeta(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   return { dayName: FULL_DAYS[d.getDay()], shortDay: DAY_NAMES[d.getDay()] };
 }
 
-// ─── Location resolver ─────────────────────────────────────────────────────
+// ─── Location: request permission then get GPS or fall back ────────────────
 
-async function resolveLocation(): Promise<{ lat: number; lng: number; label: string }> {
+async function resolveCoords(): Promise<{ lat: number; lng: number; usedFallback: boolean }> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {
-      return { lat: DEFAULT_LAT, lng: DEFAULT_LNG, label: DEFAULT_LOCATION_LABEL };
+      return { lat: FALLBACK_LAT, lng: FALLBACK_LNG, usedFallback: true };
     }
 
     const pos = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Balanced,
     });
-
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-    let label = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
-
-    try {
-      const geo = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-      if (geo && geo.length > 0) {
-        const p = geo[0];
-        const parts = [
-          p.city ?? p.subregion ?? p.district,
-          p.region,
-          p.country,
-        ].filter(Boolean);
-        if (parts.length > 0) label = parts.join(", ");
-      }
-    } catch {
-      // keep coordinate label
-    }
-
-    return { lat, lng, label };
+    return {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      usedFallback: false,
+    };
   } catch {
-    return { lat: DEFAULT_LAT, lng: DEFAULT_LNG, label: DEFAULT_LOCATION_LABEL };
+    return { lat: FALLBACK_LAT, lng: FALLBACK_LNG, usedFallback: true };
   }
 }
 
-// ─── API calls — Official OpenWeatherMap (free tier) ───────────────────────
+// ─── API: current weather ──────────────────────────────────────────────────
 
-async function fetchCurrentWeather(lat: number, lng: number): Promise<{ current: CurrentWeather; locationName: string }> {
+async function fetchCurrentWeather(
+  lat: number,
+  lng: number
+): Promise<{ current: CurrentWeather; cityName: string }> {
   const url = `${OWM_BASE}/weather?lat=${lat}&lon=${lng}&appid=${OWM_KEY}&units=metric`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Current weather HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`Weather API ${res.status}`);
   const json = await res.json();
 
   const tempC = Math.round(json.main.temp as number);
@@ -147,9 +143,8 @@ async function fetchCurrentWeather(lat: number, lng: number): Promise<{ current:
   const windKmh = Math.round(windMs * 3.6);
   const humidity: number = json.main?.humidity ?? 0;
 
-  const cityName: string = json.name ?? "";
-  const country: string = json.sys?.country ?? "";
-  const locationName = [cityName, country].filter(Boolean).join(", ");
+  // City name comes directly from OWM response
+  const cityName: string = json.name ?? FALLBACK_LOCATION;
 
   return {
     current: {
@@ -159,19 +154,20 @@ async function fetchCurrentWeather(lat: number, lng: number): Promise<{ current:
       humidity,
       condition: getCondition(description),
     },
-    locationName,
+    cityName,
   };
 }
+
+// ─── API: 5-day forecast (40 × 3-hr slots) ────────────────────────────────
 
 async function fetchForecast(lat: number, lng: number): Promise<DayForecast[]> {
   const url = `${OWM_BASE}/forecast?lat=${lat}&lon=${lng}&appid=${OWM_KEY}&units=metric&cnt=40`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Forecast HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`Forecast API ${res.status}`);
   const json = await res.json();
 
   const list: any[] = json.list ?? [];
 
-  // Group 3-hourly entries by date (YYYY-MM-DD)
   const byDate: Record<
     string,
     { temps: number[]; descriptions: string[]; rainMm: number; popValues: number[] }
@@ -182,7 +178,7 @@ async function fetchForecast(lat: number, lng: number): Promise<DayForecast[]> {
     const tempC = Math.round(item.main.temp as number);
     const desc: string = item.weather?.[0]?.description ?? "clear sky";
     const rain: number = item.rain?.["3h"] ?? 0;
-    const pop: number = item.pop ?? 0; // probability of precipitation (0–1)
+    const pop: number = item.pop ?? 0;
 
     if (!byDate[dateStr]) {
       byDate[dateStr] = { temps: [], descriptions: [], rainMm: 0, popValues: [] };
@@ -193,16 +189,15 @@ async function fetchForecast(lat: number, lng: number): Promise<DayForecast[]> {
     byDate[dateStr].popValues.push(pop);
   }
 
-  const days: DayForecast[] = Object.entries(byDate)
+  return Object.entries(byDate)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(0, 7)
     .map(([dateStr, { temps, descriptions, rainMm, popValues }]) => {
       const maxTemp = Math.max(...temps);
       const minTemp = Math.min(...temps);
-      // pick the midday description if available, else the most frequent
-      const dominantDesc = descriptions[Math.floor(descriptions.length / 2)] ?? descriptions[0];
+      const dominantDesc =
+        descriptions[Math.floor(descriptions.length / 2)] ?? descriptions[0];
       const precipitation = Math.round(rainMm * 10) / 10;
-      // max rain probability for the day
       const rainProbability = Math.max(...popValues);
       const { dayName, shortDay } = dayMeta(dateStr);
       return {
@@ -218,8 +213,6 @@ async function fetchForecast(lat: number, lng: number): Promise<DayForecast[]> {
         goodForFarming: isGoodForFarming(dominantDesc, rainProbability),
       };
     });
-
-  return days;
 }
 
 // ─── Hook ──────────────────────────────────────────────────────────────────
@@ -229,46 +222,55 @@ export function useWeather() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [locationLabel, setLocationLabel] = useState<string>("Locating…");
-  const [locationReady, setLocationReady] = useState(false);
-
-  const fetchWeather = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { lat, lng, label } = await resolveLocation();
-      setLocationLabel(label);
-      setLocationReady(true);
-
-      const [{ current, locationName }, daily] = await Promise.all([
-        fetchCurrentWeather(lat, lng),
-        fetchForecast(lat, lng),
-      ]);
-
-      // Find next rain day (skip today, index 0)
-      const rainDay = daily.find((_d, i) => i > 0 && _d.rainProbability > 0.3);
-      const rainDayShort = rainDay ? rainDay.shortDay : null;
-
-      // Use OWM city name if reverse geocode gave just coordinates
-      const finalLocationLabel = label.includes("°") && locationName ? locationName : label;
-      setLocationLabel(finalLocationLabel);
-
-      setData({ current, daily, rainDayShort, locationName: finalLocationLabel });
-    } catch (e: any) {
-      setError(e.message ?? "Unknown error");
-      if (!locationReady) {
-        setLocationLabel(DEFAULT_LOCATION_LABEL);
-        setLocationReady(true);
-      }
-      setData((prev) => prev ?? DEFAULT_DATA);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
-    fetchWeather();
-  }, [fetchWeather]);
+    let cancelled = false;
 
-  return { weather: data, loading, error, locationLabel, refetch: fetchWeather };
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Step 1: request permission and get GPS (or fallback coords)
+        const { lat, lng, usedFallback } = await resolveCoords();
+
+        if (usedFallback) {
+          setLocationLabel(FALLBACK_LOCATION);
+        }
+
+        // Step 2: fetch current weather + forecast in parallel
+        const [{ current, cityName }, daily] = await Promise.all([
+          fetchCurrentWeather(lat, lng),
+          fetchForecast(lat, lng),
+        ]);
+
+        if (cancelled) return;
+
+        // Step 3: use city name from OWM response as location label
+        const locationName = usedFallback ? FALLBACK_LOCATION : cityName;
+        setLocationLabel(locationName);
+
+        // Step 4: find next rain day (skip today at index 0)
+        const rainDay = daily.find((_d, i) => i > 0 && _d.rainProbability > 0.3);
+        const rainDayShort = rainDay ? rainDay.shortDay : null;
+
+        setData({ current, daily, rainDayShort, locationName });
+      } catch (e: any) {
+        if (cancelled) return;
+        setError(e.message ?? "Unknown error");
+        setLocationLabel(FALLBACK_LOCATION);
+        setData((prev) => prev ?? DEFAULT_DATA);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { weather: data, loading, error, locationLabel };
 }
